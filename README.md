@@ -44,13 +44,3 @@ git push -u origin main
 1. 复制 `posts/` 下任意一篇 HTML 作为模板（保留 `../` 相对路径引用样式）；
 2. 写好后在 `index.html` 的 `<ul class="post-list">` 里加一张文章卡片；
 3. `git push` 即完成发布。
-
-## 本地预览
-
-直接双击 `index.html` 用浏览器打开即可；或在本目录运行：
-
-```bash
-python -m http.server 8000
-```
-
-访问 <http://localhost:8000>。
