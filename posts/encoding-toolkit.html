@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>编码一把梭：[随波逐流]CTF编码工具 · 星河好困</title>
+  <meta name="description" content="随波逐流编码工具能解哪些编码，Misc 里常见的编码套娃识别特征与多层解码流程。">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav wrap">
+      <a class="brand" href="../index.html">
+        <span class="logo">✦</span><span class="name">星河好困</span>
+      </a>
+      <div class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../about.html">关于</a>
+        <button id="theme-toggle" aria-label="切换深浅色主题">🌙 深色</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="article-head">
+      <h1>编码一把梭：[随波逐流]CTF编码工具</h1>
+      <div class="info">
+        <span class="tag">Misc</span>
+        <time datetime="2026-10-18">发布于 2026-10-18</time>
+        <span>约 8 分钟</span>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ul>
+        <li><a href="#what">这个工具是什么</a></li>
+        <li><a href="#identify">编码类型识别特征表</a></li>
+        <li><a href="#onion">多层编码的剥洋葱流程</a></li>
+        <li><a href="#fallback">工具解不出来时</a></li>
+      </ul>
+    </nav>
+
+    <article class="prose">
+      <h2 id="what">这个工具是什么</h2>
+      <p><code>[随波逐流]CTF编码工具 V4.2</code> 是国内 CTF 圈流传很广的 Windows 图形化编码全家桶，一个界面里塞了几十种编码的互转：Base 家族、莫尔斯、十六进制、URL/Unicode、 brainfuck、肉鸡（csbrain）、社会主义核心价值观、与佛论禅、Quake、UU/YAML 等冷门编码基本都覆盖。</p>
+      <p>它的定位是<strong>"识别 + 第一层解码"</strong>：把一串鬼画符贴进去，逐个点编码按钮看哪个能出可读结果。批量或嵌套场景仍需脚本辅助，但手动题它是最快的。</p>
+
+      <h2 id="identify">编码类型识别特征表</h2>
+      <p>比"挨个点按钮"更高效的是先按特征猜类型：</p>
+      <table>
+        <thead><tr><th>看到的形态</th><th>大概率是</th></tr></thead>
+        <tbody>
+          <tr><td>字母数字 + <code>+/</code>，以 <code>=</code> 或 <code>==</code> 结尾</td><td>Base64</td></tr>
+          <tr><td>只含 <code>A-P</code> 且长度是 8 的倍数</td><td>Base16/32 家族，Base32 特征最明显</td></tr>
+          <tr><td>只含 <code>+ - .</code> 和空格</td><td>脑残粉 brainfuck</td></tr>
+          <tr><td><code>.-</code> 和空格交替，有分隔符</td><td>莫尔斯（注意可能先 Base64 再莫尔斯）</td></tr>
+          <tr><td>中文短语"富强 民主 文明…"</td><td>社会主义核心价值观编码</td></tr>
+          <tr><td>"吧尼呢咪…"</td><td>与佛论禅</td></tr>
+          <tr><td>0/1 串，8 位一组</td><td>二进制；位数是 7 的倍数考虑 ASCII 变形</td></tr>
+          <tr><td>00-FF 成对十六进制</td><td>Hex；开头 <code>D0 CAFE</code> 之类先查文件头</td></tr>
+          <tr><td>大量 <code>%XX</code></td><td>URL 编码；<code>\uXXXX</code> 则是 Unicode</td></tr>
+          <tr><td>看着像乱码但含可打印中文</td><td>编码当加密用：先试 Base64 解码再 GBK/UTF-8 互转</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="onion">多层编码的剥洋葱流程</h2>
+      <p>Misc 真题里单层编码几乎不存在，标准打法：</p>
+      <ol>
+        <li><strong>每次解一层都保存中间结果</strong>，别在原始串上直接改；</li>
+        <li>解出来还是乱码 → 把新串的特征再对照上表，循环直到可读；</li>
+        <li>常见组合背几个：<code>Base64 → 莫尔斯</code>、<code>Hex → Base64 → brainfuck</code>、<code>URL → Unicode → Base32</code>、<code>值编码 → Base64 → 凯撒</code>；</li>
+        <li>出现 <code>flag{</code> 但 ROT 变形 → 凯撒/ROT13；出现"每 8 个字符一组反了" → 分组反转。</li>
+      </ol>
+      <p>随波逐流工具支持连续解码历史，配合它比开十个在线网站快得多。</p>
+
+      <h2 id="fallback">工具解不出来时</h2>
+      <ul>
+        <li><strong>自定义编码表</strong>：题目给了"乱序字母表 + 标准表"对照时是单表替换，写 10 行 Python 映射，工具里的"凯撒/仿射"帮不上；</li>
+        <li><strong>在线兜底</strong>：CyberChef 是图形化的瑞士军刀，随波逐流没覆盖的（如 Base58、Base62、Gost）去那里补；</li>
+        <li><strong>脚本兜底</strong>：Python 的 <code>base64</code>、<code>binascii</code>、<code>codecs</code> 标准库覆盖常见编码，套娃题写循环解到不可解为止。</li>
+      </ul>
+      <pre><code># 循环剥 Base 家族的小脚本，常备
+import base64, binascii
+s = open("cipher.txt").read().strip()
+while True:
+    for fn in (base64.b64decode, base64.b32decode, base64.b16decode):
+        try:
+            t = fn(s)
+            if t and all(32 &lt; c &lt; 127 or c in (10,13) for c in t):
+                s = t.decode(); break
+        except Exception: pass
+    else: break
+print(s)</code></pre>
+      <p>五篇工具文到此收齐，回到 <a href="misc-workflow.html">Misc 标准动作</a> 那张分工表，按现象取用即可。</p>
+    </article>
+
+    <div class="post-nav">
+      <a href="archive-crack.html"><span class="hint">← 上一篇</span>压缩包三件套：ZipCenOp / ARCHPR / RailsInstaller</a>
+      <span></span>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      © 2026 星河好困 · CTF Misc 工具箱 · <a href="https://github.com/XingHeHaoKun/XingHeHaoKun.github.io">源码仓库</a>
+    </div>
+  </footer>
+</body>
+</html>

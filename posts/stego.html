@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>隐写与二维码：StegSolve / zsteg / QR · 星河好困</title>
+  <meta name="description" content="图片隐写三件套：StegSolve 位平面逐通道翻图、zsteg 自动检测 LSB 隐写、残缺二维码的识别与补全。">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav wrap">
+      <a class="brand" href="../index.html">
+        <span class="logo">✦</span><span class="name">星河好困</span>
+      </a>
+      <div class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../about.html">关于</a>
+        <button id="theme-toggle" aria-label="切换深浅色主题">🌙 深色</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="article-head">
+      <h1>隐写与二维码：StegSolve / zsteg / QR</h1>
+      <div class="info">
+        <span class="tag">Misc</span>
+        <time datetime="2026-10-24">发布于 2026-10-24</time>
+        <span>约 12 分钟</span>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ul>
+        <li><a href="#stegsolve">StegSolve：人肉翻位平面</a></li>
+        <li><a href="#zsteg">zsteg：一条命令自动检测</a></li>
+        <li><a href="#gif">GIF 多帧隐写</a></li>
+        <li><a href="#qr">二维码题的四种花样</a></li>
+        <li><a href="#route">隐写题决策路线</a></li>
+      </ul>
+    </nav>
+
+    <article class="prose">
+      <h2 id="stegsolve">StegSolve：人肉翻位平面</h2>
+      <p>StegSolve-1.4.jar 是老牌 Java 工具，界面简陋但不可替代——它能<strong>把每个颜色通道的每个位平面单独显示成图</strong>，肉眼直接看到藏进去的内容。</p>
+      <p>启动方式（双击没反应就用命令行）：</p>
+      <pre><code>java -jar StegSolve-1.4.jar</code></pre>
+      <p>核心操作只有两个：</p>
+      <ol>
+        <li><code>File → Open</code> 载入图片，点 <code>Next</code> / <code>Prev</code> 按钮在 0-7 共 8 个位平面之间循环切换；</li>
+        <li>重点看 <strong>Red plane 0 / Green plane 0 / Blue plane 0</strong>（最低位平面），LSB 隐写的文字、图案通常直接浮现在这里。</li>
+      </ol>
+      <p>其他常用视图：<code>Colour → Alpha</code> 看透明度通道（PNG 的 alpha 里藏字很常见）、<code>Static</code> 模式对比相邻平面差异。翻到某一平面出现黑白噪点里的清晰轮廓或文字，基本就中了。</p>
+      <blockquote>StegSolve 的不可替代场景：flag 是"画"在位平面里的图案而不是一串字节——zsteg 只会报差异，人眼才能读出图案。</blockquote>
+
+      <h2 id="zsteg">zsteg：一条命令自动检测</h2>
+      <p>zsteg 是 Ruby 写的 LSB 隐写自动扫描器，对 PNG 和 BMP 命中率很高。Windows 下需要先装 Ruby 环境（用 RailsInstaller，见<a href="archive-crack.html">压缩包那篇</a>），然后：</p>
+      <pre><code>gem install zsteg
+
+:: 全量扫描，常用
+zsteg -a secret.png
+
+:: 只看指定数据流，比如 B,G,0 表示蓝通道最低位
+zsteg -a -v secret.png
+zsteg secret.png -1 b,g,0
+
+:: 反过来，用 zsteg 往图里藏东西做自测
+zsteg embed1 flag.png "test hidden"</code></pre>
+      <p>输出里出现 <code>Imagedata found after image data</code> 说明尾部有附加数据；出现 <code>hidden in channel</code> 则直接给出 LSB 提取出的内容。建议 <code>-a</code> 全扫，跑几秒换全覆盖。</p>
+
+      <h2 id="gif">GIF 多帧隐写</h2>
+      <p>GIF 隐写考的是<strong>帧</strong>：把 flag 的每一帧拆开，或者在帧间塞额外数据。流程：</p>
+      <ol>
+        <li>用 <code>gifsicle</code> 或 010 Editor 看帧数，异常多帧就是信号；</li>
+        <li>拆帧：<code>gifsicle flag.gif --unoptimize -S 1 &gt; f.gif</code> 逐帧导出，或用在线 GIF 浏览器左右翻帧；</li>
+        <li>帧内容拼字：每帧显示一个字符，按顺序读；</li>
+        <li>帧延时藏信息：帧间隔 83ms、125ms 之类的"奇怪延时"，把延时值转 ASCII 常能拼出 flag。</li>
+      </ol>
+
+      <h2 id="qr">二维码题的四种花样</h2>
+        <p>qr 工具目录（我用的解码核心是 zbar / zxing + 脚本）应对以下几类：</p>
+      <h3>1. 标准解码失败</h3>
+      <p>先做图像预处理再解：放大 4 倍、二值化、反色、旋转。Python 一行流：</p>
+      <pre><code>from pyzbar.pyzbar import decode
+from PIL import Image
+print(decode(Image.open("qr.png")))</code></pre>
+      <h3>2. 残缺二维码</h3>
+      <p>三个定位角至少剩两个才有救。手工补黑块时记住：<strong>二维码纠错等级最高 30%</strong>，小面积缺失直接补纯色块就可能解出；大面积缺失要按数据区规律推。</p>
+      <h3>3. 彩色二维码</h3>
+      <p>颜色本身是信息：把每种颜色映射成 0/1（通常深色=1）重绘成标准黑白码再扫。先统计颜色种类，两种以上颜色基本就是这个套路。</p>
+      <h3>4. 多帧/变形 QR</h3>
+      <p>GIF 里的 QR 要逐帧解再拼接内容；"眼睛在动"的动图 QR 同理。</p>
+
+      <h2 id="route">隐写题决策路线</h2>
+      <table>
+        <thead><tr><th>线索</th><th>动作</th></tr></thead>
+        <tbody>
+          <tr><td>PNG/BMP + " LSB / 最低位 / 颜色"</td><td><code>zsteg -a</code> 先跑，没结果再 StegSolve 人肉翻</td></tr>
+          <tr><td>题目提示"看得见摸不着"</td><td>StegSolve 看 alpha 通道、反色</td></tr>
+          <tr><td>GIF / 动图</td><td>拆帧 → 帧内容/帧延时两条路</td></tr>
+          <tr><td>图片是二维码但扫不出</td><td>预处理 → 补全 → 颜色映射三板斧</td></tr>
+          <tr><td>JPG + 提示"密码本/512"</td><td>outguess / jphide 方向，超出本篇工具，遇到再查</td></tr>
+        </tbody>
+      </table>
+      <p>下一篇：<a href="traffic-and-router.html">流量与凭证 —— Wireshark / RouterPassView</a>。</p>
+    </article>
+
+    <div class="post-nav">
+      <a href="hex-and-meta.html"><span class="hint">← 上一篇</span>文件与元数据分析：010 Editor / Strings / Exif Pilot</a>
+      <a href="traffic-and-router.html"><span class="hint">下一篇 →</span>流量与凭证：Wireshark / RouterPassView</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      © 2026 星河好困 · CTF Misc 工具箱 · <a href="https://github.com/XingHeHaoKun/XingHeHaoKun.github.io">源码仓库</a>
+    </div>
+  </footer>
+</body>
+</html>

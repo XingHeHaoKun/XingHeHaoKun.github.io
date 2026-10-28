@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文件与元数据分析：010 Editor / Strings / Exif Pilot · 星河好困</title>
+  <meta name="description" content="Misc 题最先上手的三件套：十六进制编辑与文件头修复、字符串提取、EXIF 元数据查看。">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav wrap">
+      <a class="brand" href="../index.html">
+        <span class="logo">✦</span><span class="name">星河好困</span>
+      </a>
+      <div class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../about.html">关于</a>
+        <button id="theme-toggle" aria-label="切换深浅色主题">🌙 深色</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="article-head">
+      <h1>文件与元数据分析：010 Editor / Strings / Exif Pilot</h1>
+      <div class="info">
+        <span class="tag">Misc</span>
+        <time datetime="2026-10-26">发布于 2026-10-26</time>
+        <span>约 11 分钟</span>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ul>
+        <li><a href="#010">010 Editor：把文件拆开看</a></li>
+        <li><a href="#magic">常见文件头速查与修复</a></li>
+        <li><a href="#strings">Strings：最暴力的第一步</a></li>
+        <li><a href="#exif">Exif Pilot：元数据里的秘密</a></li>
+        <li><a href="#checklist">三件套检查清单</a></li>
+      </ul>
+    </nav>
+
+    <article class="prose">
+      <h2 id="010">010 Editor：把文件拆开看</h2>
+      <p>010 Editor 是我最常开的窗口。它本质上是个十六进制编辑器，但真正值钱的是两个功能：</p>
+      <ul>
+        <li><strong>Binary Templates</strong>：加载模板后能把文件按结构高亮成字段（PNG 的 chunk、ZIP 的中央目录、PE 的头），一眼看出哪块被改过；</li>
+        <li><strong>Compare / 编辑</strong>：两个相似文件对比差异，或者直接改某个字节另存。</li>
+      </ul>
+      <p>典型用法：Misc 题里 PNG 常被改掉 <code>IHDR</code> 宽高或 <code>tEXt</code> 长度导致打不开。用 010 打开，对照模板找到 <code>IHDR</code> 之后的宽高四字节，改回真实尺寸即可。改完记得同步修正对应 chunk 的 CRC（或者干脆用脚本重算）。</p>
+
+      <h2 id="magic">常见文件头速查与修复</h2>
+      <table>
+        <thead><tr><th>类型</th><th>文件头（hex）</th><th>备注</th></tr></thead>
+        <tbody>
+          <tr><td>PNG</td><td><code>89 50 4E 47 0D 0A 1A 0A</code></td><td>结尾应有 <code>IEND</code></td></tr>
+          <tr><td>JPEG</td><td><code>FF D8 FF</code></td><td>结尾 <code>FF D9</code></td></tr>
+          <tr><td>GIF</td><td><code>47 49 46 38 39 61</code></td><td>多帧看 <code>00 21 F9</code> 分隔</td></tr>
+          <tr><td>ZIP / docx / apk</td><td><code>50 4B 03 04</code></td><td>结尾 <code>50 4B 05 06</code> 是中央目录</td></tr>
+          <tr><td>RAR</td><td><code>52 61 72 21 1A 07</code></td><td>rar5 后缀字节不同</td></tr>
+          <tr><td>7z</td><td><code>37 7A BC AF 27 1C</code></td><td></td></tr>
+          <tr><td>PCAP</td><td><code>D4 C1 B5 A8</code> / <code>A8 B5 C1 D4</code></td><td>pcapng 为 <code>0A 0D 0D 0A</code></td></tr>
+          <tr><td>ELF</td><td><code>7F 45 4C 46</code></td><td>Linux 可执行文件</td></tr>
+          <tr><td>PE / exe</td><td><code>4D 5A</code></td><td>"MZ" 开头</td></tr>
+        </tbody>
+      </table>
+      <p>修文件头是 Misc 的低成本得分点：<strong>把前 8 个字节改成正确魔数，往往就能让工具重新识别文件</strong>。</p>
+
+      <h2 id="strings">Strings：最暴力的第一步</h2>
+      <p>Sysinternals 的 <code>strings.exe</code>（或 GNU <code>strings</code>）从任意二进制里抠出可打印字符。别看它土，命中率极高——flag 藏在注释里、藏在拼接进图片的文本里，全靠它第一遍扫出来。</p>
+      <pre><code>:: 只要长度 >= 6 的字符串
+strings.exe -n 6 flag.zip
+
+:: 大端/小端宽字符（UTF-16）也要扫，Windows 程序常这样存
+strings.exe -n 6 -e l file.bin
+
+:: 直接筛 flag
+strings.exe -n 4 image.png | findstr /i "flag ctf {"</code></pre>
+      <p>看到输出里有 <code>PK</code>、<code>FF D8</code> 之类的片段，说明文件尾部还塞了别的文件，配合 010 Editor 定位偏移后 <code>dd</code> / WinHex 切出来。</p>
+
+      <h2 id="exif">Exif Pilot：元数据里的秘密</h2>
+      <p>Exif Pilot 用来查看和编辑图片的 EXIF / IPTC / XMP 字段，界面直观，改完能直接保存。Misc 里重点看这几项：</p>
+      <ul>
+        <li><strong>Image Description / Comment / Artist</strong> —— 出题人最爱塞 base64 的地方；</li>
+        <li><strong>GPS 经纬度</strong> —— 有时是十进制度，有时要做进制转换才是真坐标；</li>
+        <li><strong>缩略图（Thumbnail）</strong> —— 主图改了但缩略图没改，原图信息藏在里面；</li>
+        <li><strong>XMP 历史</strong> —— 记录过编辑软件与修改次数，能提示"这张图被谁动过"。</li>
+      </ul>
+      <p>命令行党用 <code>exiftool</code> 更全：</p>
+      <pre><code>exiftool photo.jpg              # 全量字段
+exiftool -Comment -Artist photo.jpg
+exiftool -all:all -G photo.jpg  # 按分组看，方便定位 XMP/IPTC
+exiftool -a -u -g1 photo.jpg    # 连隐藏/重复标签一起挖</code></pre>
+      <blockquote>Exif Pilot 适合"看一眼并手动改"，exiftool 适合"批量扫和写脚本"。两个都留着。</blockquote>
+
+      <h2 id="checklist">三件套检查清单</h2>
+      <p>任何附件到手，我固定跑这五步：</p>
+      <ol>
+        <li>改扩展名之前先看魔数（010 Editor）；</li>
+        <li><code>strings -n 6</code> 全量扫一遍，重点搜 <code>flag</code>、<code>PK</code>、<code>-----BEGIN</code>；</li>
+        <li>图片就查 EXIF 全字段，别漏 XMP；</li>
+        <li>文件末尾对比正确长度，多出来的字节切出来看看；</li>
+        <li>还是没线索 → 转隐写或流量那两篇的思路。</li>
+      </ol>
+      <p>下一篇：<a href="stego.html">隐写与二维码 —— StegSolve / zsteg / QR</a>。</p>
+    </article>
+
+    <div class="post-nav">
+      <a href="misc-workflow.html"><span class="hint">← 上一篇</span>CTF Misc 方向：拿到附件之后的标准动作</a>
+      <a href="stego.html"><span class="hint">下一篇 →</span>隐写与二维码：StegSolve / zsteg / QR</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      © 2026 星河好困 · CTF Misc 工具箱 · <a href="https://github.com/XingHeHaoKun/XingHeHaoKun.github.io">源码仓库</a>
+    </div>
+  </footer>
+</body>
+</html>

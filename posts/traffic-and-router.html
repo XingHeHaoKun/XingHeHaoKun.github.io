@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>流量与凭证：Wireshark / RouterPassView · 星河好困</title>
+  <meta name="description" content="pcap 流量分析的高频过滤口诀与对象导出，以及路由器配置备份里的明文口令恢复。">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav wrap">
+      <a class="brand" href="../index.html">
+        <span class="logo">✦</span><span class="name">星河好困</span>
+      </a>
+      <div class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../about.html">关于</a>
+        <button id="theme-toggle" aria-label="切换深浅色主题">🌙 深色</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="article-head">
+      <h1>流量与凭证：Wireshark / RouterPassView</h1>
+      <div class="info">
+        <span class="tag">Misc</span>
+        <time datetime="2026-10-22">发布于 2026-10-22</time>
+        <span>约 10 分钟</span>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ul>
+        <li><a href="#wireshark">Wireshark：拿到 pcap 先做四件事</a></li>
+        <li><a href="#filters">高频过滤器速查</a></li>
+        <li><a href="#wifi">无线流量题</a></li>
+        <li><a href="#router">RouterPassView：路由器备份口令恢复</a></li>
+      </ul>
+    </nav>
+
+    <article class="prose">
+      <h2 id="wireshark">Wireshark：拿到 pcap 先做四件事</h2>
+      <p>流量题的通用开局，四步能解决大半：</p>
+      <ol>
+        <li><strong>Statistics → Conversations</strong>：看谁在跟谁说话，异常会话（大量小包、单一端口反复连）就是主线；</li>
+        <li><strong>Statistics → Protocol Hierarchy</strong>：看协议占比，出现非 HTTP 的怪协议（ICMP 占比高、USB、802.11 探针）立刻警觉；</li>
+        <li><strong>File → Export Objects → HTTP/SMB/TFTP</strong>：题目里传输的文件直接批量导出，很多题的 flag 就在导出文件里；</li>
+        <li><strong>搜索 <code>flag</code></strong>（Ctrl+F 选 String 或 Hex）：最笨但最常中奖。</li>
+      </ol>
+
+      <h2 id="filters">高频过滤器速查</h2>
+      <table>
+        <thead><tr><th>过滤表达式</th><th>用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>http.request.method == "POST"</code></td><td>只看提交包，登录/上传题核心</td></tr>
+          <tr><td><code>urldecode(http.file_data) contains "flag"</code></td><td>URL 解码后搜 flag</td></tr>
+          <tr><td><code>ftp || telnet || pop || imap</code></td><td>明文协议一把抓，账号密码直接可见</td></tr>
+          <tr><td><code>icmp</code></td><td>ICMP 隧道题：看 data 段是否藏了文件</td></tr>
+          <tr><td><code>usb.capdata</code></td><td>USB 键盘流量：提取键值码还原输入</td></tr>
+          <tr><td><code>tcp.stream eq 3</code></td><td>只看第 3 条 TCP 流，配合 Follow Stream</td></tr>
+          <tr><td><code>wlan.fc.type_subtype == 0x08</code></td><td>只看 WiFi Probe 帧，隐藏 SSID 题</td></tr>
+        </tbody>
+      </table>
+      <p>两个经典场景的处理：</p>
+      <ul>
+        <li><strong>USB 键盘流量</strong>：过滤 <code>usb.capdata</code> 导出键值十六进制，对照 USB HID usage table 写脚本还原击键（网上有现成脚本，改改就能用）；</li>
+        <li><strong>ICMP 隧道</strong>：把各包 data 段按序拼起来，常是一个 base64 或一个被切开的 zip。</li>
+      </ul>
+      <blockquote>右键 → Follow → TCP Stream 是 Wireshark 一半的解题功能；另一半是 Export Objects。</blockquote>
+
+      <h2 id="wifi">无线流量题</h2>
+      <p>pcapng 里出现 802.11 帧（有 beacon、四次握手）时，常见套路是抓包 WiFi 密码：</p>
+      <ol>
+        <li>过滤 <code>eapol</code> 找到四次握手，确认握手包完整；</li>
+        <li>用 <code>aircrack-ng capture.pcap -w dict.txt</code> 跑字典，字典本身往往藏在题目其他附件里（EXIF、strings 输出、流量里的文件）；</li>
+        <li>拿到密码后如果还有加密数据流，Wireshark 里 <code>Edit → Preferences → Protocols → 802.11</code> 填入密钥解密，再走 HTTP 那套流程。</li>
+      </ol>
+
+      <h2 id="router">RouterPassView：路由器备份口令恢复</h2>
+      <p>RouterPassView（NirSoft 出品）专门读路由器配置备份文件（<code>.rfn</code>、<code>.nvram</code>、各厂商备份格式），直接列出里面的明文/半明文口令：WiFi 密码、管理员账号、PPPoE 拨号密码。</p>
+      <ul>
+        <li><strong>适用</strong>：Misc 题给出"路由器设置备份文件"，要求找回 WiFi 密码或管理密码——这是最短路径，不用自己解析格式；</li>
+        <li><strong>用法</strong>：打开文件即全量列出字段，Ctrl+F 搜 <code>ssid</code>、<code>wpa</code>、<code>password</code>；</li>
+        <li><strong>不适用</strong>：备份文件被强加密（字段全是高熵乱码）时，需要回到厂商固件逆向思路，这工具只吃"混淆"不吃"真加密"。</li>
+      </ul>
+      <p>同类可交叉验证：路由器配置常是改名的 zip/tar，先 <code>file</code> 看真身，是压缩包就直接解开看 xml。</p>
+      <p>下一篇：<a href="archive-crack.html">压缩包三件套 —— 伪加密 / 口令破解 / 已知明文</a>。</p>
+    </article>
+
+    <div class="post-nav">
+      <a href="stego.html"><span class="hint">← 上一篇</span>隐写与二维码：StegSolve / zsteg / QR</a>
+      <a href="archive-crack.html"><span class="hint">下一篇 →</span>压缩包三件套：ZipCenOp / ARCHPR / RailsInstaller</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      © 2026 星河好困 · CTF Misc 工具箱 · <a href="https://github.com/XingHeHaoKun/XingHeHaoKun.github.io">源码仓库</a>
+    </div>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CTF Misc 方向：拿到附件之后的标准动作 · 星河好困</title>
+  <meta name="description" content="Misc 题的通用解题流程：认清文件真身、按现象分流到工具，以及我这套工具箱的分工表。">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav wrap">
+      <a class="brand" href="../index.html">
+        <span class="logo">✦</span><span class="name">星河好困</span>
+      </a>
+      <div class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../about.html">关于</a>
+        <button id="theme-toggle" aria-label="切换深浅色主题">🌙 深色</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="article-head">
+      <h1>CTF Misc 方向：拿到附件之后的标准动作</h1>
+      <div class="info">
+        <span class="tag">Misc</span>
+        <time datetime="2026-10-28">发布于 2026-10-28</time>
+        <span>约 9 分钟</span>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ul>
+        <li><a href="#scope">Misc 到底考什么</a></li>
+        <li><a href="#step1">第一步：认清文件的真身</a></li>
+        <li><a href="#step2">第二步：按现象分流</a></li>
+        <li><a href="#arsenal">我的工具箱分工表</a></li>
+        <li><a href="#env">环境准备</a></li>
+      </ul>
+    </nav>
+
+    <article class="prose">
+      <p>Misc 是 CTF 里最"脏"的方向：没有固定的知识点，考的是<strong>信息收集能力 + 工具熟练度</strong>。附件可能是图片、压缩包、流量包、内存镜像，也可能是一个伪装成图片的压缩包。这篇先讲流程，工具细节在后面几篇。</p>
+
+      <h2 id="scope">Misc 到底考什么</h2>
+      <p>我按解题动作把它分成六类，基本能覆盖 90% 的题目：</p>
+      <ul>
+        <li><strong>编码转换</strong> —— Base 家族、莫斯、脑残粉、社会主义核心价值观、进制互转，常常多层套娃；</li>
+        <li><strong>隐写</strong> —— 位平面、LSB、GIF 帧、伪加密、附件尾部拼接、二维码；</li>
+        <li><strong>元数据与取证</strong> —— EXIF、文件头修复、注释字段、字符串提取；</li>
+        <li><strong>流量分析</strong> —— pcap 里的文件传输、明文口令、隐蔽信道；</li>
+        <li><strong>密码与压缩包</strong> —— 弱口令、字典、已知明文攻击、伪加密修复；</li>
+        <li><strong>其他杂项</strong> —— OCR、游戏存档、内存取证、音频频谱。</li>
+      </ul>
+      <blockquote>看到题目先别急着开工具，先问自己：这道题在"藏"什么——藏内容、藏口令，还是藏编码？</blockquote>
+
+      <h2 id="step1">第一步：认清文件的真身</h2>
+      <p> Misc 第一大坑是<strong>扩展名骗人</strong>。拿到附件先做三件事：</p>
+      <ol>
+        <li>看文件头魔数。PNG 是 <code>89 50 4E 47</code>，ZIP 是 <code>50 4B 03 04</code>，JPEG 是 <code>FF D8 FF</code>，GIF 是 <code>47 49 46 38</code>，PCAP 是 <code>D4 C1</code> / <code>0A 0D 0D 0A</code>；</li>
+        <li>跑一遍 <code>file</code>（Linux/WSL）或直接用 010 Editor 打开看十六进制；</li>
+        <li>用 <code>strings</code> 粗扫一遍，很多时候 <code>flag{</code> 就直接躺在里面。</li>
+      </ol>
+      <p>如果魔数和扩展名不一致，比如一个 <code>.jpg</code> 开头是 <code>50 4B 03 04</code>，那它就是压缩包，直接改扩展名解压。</p>
+
+      <h2 id="step2">第二步：按现象分流</h2>
+      <p>下面是我做题时贴在手边的对照表：</p>
+      <table>
+        <thead><tr><th>现象 / 线索</th><th>优先动作</th></tr></thead>
+        <tbody>
+          <tr><td>图片打不开、提示 CRC 错误</td><td>文件头被改过 → 010 Editor 修魔数；ZIP 则查伪加密</td></tr>
+          <tr><td>解压要密码，题目没给</td><td>先翻注释/EXIF/strings 找口令线索，再上字典</td></tr>
+          <tr><td>提示"隐藏"/"看不见"</td><td>StegSolve 位平面、zsteg、GIF 帧浏览器</td></tr>
+          <tr><td>图片里有奇怪色块或残缺图案</td><td>二维码补全 / 反色 / 多帧 QR</td></tr>
+          <tr><td>附件是 .pcap / .pcapng</td><td>Wireshark：Follow Stream → Export Objects → 过滤 ICMP/USB</td></tr>
+          <tr><td>一串看不懂的字符</td><td>编码工具按字符集特征反推编码类型</td></tr>
+          <tr><td>路由器配置备份文件</td><td>RouterPassView 直接恢复明文口令</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="arsenal">我的工具箱分工表</h2>
+      <p>对应本站几篇工具介绍文章：</p>
+      <table>
+        <thead><tr><th>工具</th><th>干什么用</th><th>详见</th></tr></thead>
+        <tbody>
+          <tr><td>010 Editor</td><td>十六进制编辑、模板解析、文件头修复</td><td rowspan="3"><a href="hex-and-meta.html">文件与元数据分析</a></td></tr>
+          <tr><td>Strings</td><td>提取可打印字符串</td></tr>
+          <tr><td>Exif Pilot</td><td>看改 EXIF/IPTC/XMP</td></tr>
+          <tr><td>StegSolve</td><td>位平面、通道、帧浏览</td><td rowspan="3"><a href="stego.html">隐写与二维码</a></td></tr>
+          <tr><td>zsteg</td><td>PNG/BMP LSB 隐写自动检测</td></tr>
+          <tr><td>QR 工具集</td><td>残缺/反色/多帧二维码</td></tr>
+          <tr><td>Wireshark</td><td>流量分析全家桶</td><td rowspan="2"><a href="traffic-and-router.html">流量与凭证</a></td></tr>
+          <tr><td>RouterPassView</td><td>路由器备份口令恢复</td></tr>
+          <tr><td>Advanced Archive Password Recovery</td><td>ZIP/RAR 口令破解</td><td rowspan="3"><a href="archive-crack.html">压缩包三件套</a></td></tr>
+          <tr><td>ZipCenOp</td><td>ZIP 伪加密修复</td></tr>
+          <tr><td>RailsInstaller</td><td>装 Ruby 环境跑 zsteg</td></tr>
+          <tr><td>[随波逐流]CTF编码工具</td><td>各类编码一键解</td><td><a href="encoding-toolkit.html">编码一把梭</a></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="env">环境准备</h2>
+      <p>这套工具在 Windows 上跑起来的注意点：</p>
+      <ul>
+        <li><strong>Java</strong>：StegSolve 是 <code>.jar</code>，需要 JRE，双击打不开就用命令行 <code>java -jar StegSolve-1.4.jar</code>；</li>
+        <li><strong>Ruby</strong>：zsteg 是 Ruby gem，Windows 下用 RailsInstaller 装最省事，具体见<a href="archive-crack.html">压缩包那篇</a>；</li>
+        <li><strong>Python</strong>：留一个 Python 3，配合 <code>zbar</code>、<code>pycryptodome</code>、<code>scapy</code> 处理脚本化需求；</li>
+        <li><strong>路径</strong>：所有工具别放在带中文或空格的路径下，Java 和 Ruby 的 gem 都容易因此报错。</li>
+      </ul>
+      <p>下一篇从最常用的十六进制和元数据三件套开始：<a href="hex-and-meta.html">010 Editor、Strings、Exif Pilot</a>。</p>
+    </article>
+
+    <div class="post-nav">
+      <span></span>
+      <a href="hex-and-meta.html"><span class="hint">下一篇 →</span>文件与元数据分析：010 Editor / Strings / Exif Pilot</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      © 2026 星河好困 · CTF Misc 工具箱 · <a href="https://github.com/XingHeHaoKun/XingHeHaoKun.github.io">源码仓库</a>
+    </div>
+  </footer>
+</body>
+</html>

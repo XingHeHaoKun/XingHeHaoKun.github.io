@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>压缩包三件套：ZipCenOp / ARCHPR / RailsInstaller · 星河好困</title>
+  <meta name="description" content="ZIP 伪加密一键修复、压缩包口令破解思路与字典构造，以及 RailsInstaller 在 Misc 环境里的真实用途。">
+  <link rel="icon" type="image/svg+xml" href="../favicon.svg">
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/theme.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav wrap">
+      <a class="brand" href="../index.html">
+        <span class="logo">✦</span><span class="name">星河好困</span>
+      </a>
+      <div class="nav-links">
+        <a href="../index.html">首页</a>
+        <a href="../about.html">关于</a>
+        <button id="theme-toggle" aria-label="切换深浅色主题">🌙 深色</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <div class="article-head">
+      <h1>压缩包三件套：ZipCenOp / ARCHPR / RailsInstaller</h1>
+      <div class="info">
+        <span class="tag">Misc</span>
+        <time datetime="2026-10-20">发布于 2026-10-20</time>
+        <span>约 10 分钟</span>
+      </div>
+    </div>
+
+    <nav class="toc">
+      <strong>目录</strong>
+      <ul>
+        <li><a href="#fake">什么是 ZIP 伪加密</a></li>
+        <li><a href="#zipcenop">ZipCenOp：一键修复伪加密</a></li>
+        <li><a href="#archpr">Advanced Archive Password Recovery：真加密怎么破</a></li>
+        <li><a href="#known">已知明文攻击（补充武器）</a></li>
+        <li><a href="#rails">RailsInstaller：其实是给 zsteg 铺路</a></li>
+      </ul>
+    </nav>
+
+    <article class="prose">
+      <h2 id="fake">什么是 ZIP 伪加密</h2>
+      <p>ZIP 文件头里有个"通用标志位"（general purpose bit flag），第 0 位置 1 表示"本条目加密"。<strong>伪加密就是只把这个标志位改了，数据本身根本没加密</strong>——解压软件看到标志位就索要密码，但内容其实是明文。</p>
+      <p>识别方法：用 010 Editor 打开 zip，找到本地文件头（<code>50 4B 03 04</code>）后第 7-8 字节，或中央目录头（<code>50 4B 01 02</code>）后第 9-10 字节。如果标志位是奇数（如 <code>01 00</code>、<code>09 00</code>、<code>99 00</code>）而解压却能看到内容或 CRC 正常，八成是伪加密。</p>
+
+      <h2 id="zipcenop">ZipCenOp：一键修复伪加密</h2>
+      <p>ZipCenOp-x86.exe 是命令行 Java 工具，专门改中央目录的标志位：</p>
+      <pre><code>:: 解密（把加密标志位清 0）
+java -jar ZipCenOp.jar d fake.zip
+
+:: 反过来：给压缩包加伪加密标记（自测用）
+java -jar ZipCenOp.jar e plain.zip</code></pre>
+      <p>不想装 Java 环境也可以手改：010 Editor 里把中央目录头的标志位低字节改成 <code>00</code> 保存即可。<strong>注意本地文件头和中央目录头两处都要改</strong>，只改一处有些解压软件仍然报错。</p>
+
+      <h2 id="archpr">Advanced Archive Password Recovery：真加密怎么破</h2>
+      <p>Advanced Archive Password Recovery（ARCHPR，俗称"Advanced RAR Password Recovery"同门）支持 ZIP 和 RAR 的口令恢复，界面对新手友好：</p>
+      <ol>
+        <li><code>File → Open Archive</code> 载入压缩包；</li>
+        <li>攻击类型按题目线索选：<strong>Brute Force</strong>（全字符集，慢）、<strong>Mask</strong>（已知前缀/长度，如 <code>flag{??????</code>）、<strong>Dictionary</strong>（有字典必先用字典）；</li>
+        <li>Type of attack 里选 ZIP 时留意它区分 <strong>PKZIP / WinZip AES</strong>——AES-256 基本只能爆字典，PKZIP 传统算法才有掩码暴力意义。</li>
+      </ol>
+      <p>字典从哪来？Misc 的惯例是<strong>字典就藏在题目里</strong>：EXIF 备注、strings 输出、流量里导出的文件、甚至图片像素数。找不到字典再考虑掩码。</p>
+      <blockquote>竞赛环境里更常用 hashcat/John 处理 AES 和 RAR5；ARCHPR 的价值是图形界面快启动，适合口令位数少的短任务。</blockquote>
+
+      <h2 id="known">已知明文攻击（补充武器）</h2>
+      <p>题目同时给了加密 zip 和它的<strong>未加密原件</strong>（哪怕只有其中一个文件）时，用已知明文攻击恢复密钥，比爆密码快几个数量级：</p>
+      <pre><code>bkcrack -C encrypted.zip -c secret.txt \
+        -P known.zip  -p known.txt
+bkcrack -C encrypted.zip -key XXXXX_XXXXX_XXXXX -unlock all.zip</code></pre>
+      <p>要求明文与密文条目至少 12 字节对齐。bkcrack 不在本篇三件套里，但知道这条路能避免对着 AES 压缩包硬跑字典。</p>
+
+      <h2 id="rails">RailsInstaller：其实是给 zsteg 铺路</h2>
+      <p>RailsInstaller 本身是 Windows 一键装 Ruby + RubyGems + DevKit + Git + SQLite 的整合包。Misc 工具箱里带它只有一个原因：<strong>zsteg 是 Ruby gem，Windows 原生没有 Ruby</strong>。</p>
+      <ol>
+        <li>安装 RailsInstaller（一路默认，装完会生成 <code>C:\RailsInstaller</code>）；</li>
+        <li>打开 <code>RailsInstaller Command Prompt</code>（已配好 PATH）；</li>
+        <li>装 zsteg：</li>
+      </ol>
+      <pre><code>gem install zsteg
+zsteg -a flag.png</code></pre>
+      <p>如果 <code>gem install</code> 卡在 SSL 证书错误，换国内源：<code>gem sources --add https://mirrors.aliyun.com/rubygems/ --remove https://rubygems.org/</code>。</p>
+      <p>最后一篇：<a href="encoding-toolkit.html">编码一把梭 —— [随波逐流]CTF编码工具</a>。</p>
+    </article>
+
+    <div class="post-nav">
+      <a href="traffic-and-router.html"><span class="hint">← 上一篇</span>流量与凭证：Wireshark / RouterPassView</a>
+      <a href="encoding-toolkit.html"><span class="hint">下一篇 →</span>编码一把梭：[随波逐流]CTF编码工具</a>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      © 2026 星河好困 · CTF Misc 工具箱 · <a href="https://github.com/XingHeHaoKun/XingHeHaoKun.github.io">源码仓库</a>
+    </div>
+  </footer>
+</body>
+</html>
